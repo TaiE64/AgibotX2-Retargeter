@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+# Models / data / media — NOT redistributable (NVIDIA Open Model License / AMASS terms)
+*.onnx
+*.pt
+*.npz
+*.pkl
+*.mp4
+*.f32
+retargeted_dataset*/
+capture/
+logs/
+media/*
+!media/*.gif
+# deploy packed artifacts (regenerate with pack_deploy.py)
+deploy_x2/pkg_*/
+deploy_x2/x2_bundle*/
