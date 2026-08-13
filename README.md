@@ -1,8 +1,10 @@
 # AgibotX2 Retargeter
 
-Human motion → **AgiBot X2 Ultra** (31 DoF) whole-body retargeting.
+Human motion → **AgiBot X2 Ultra** whole-body retargeting (29 actively
+retargeted joints; the 2 head joints carry no human target and stay at zero).
 Takes SMPL-X (AMASS), LAFAN1 (BVH) or Xsens streams and produces
-physically-screened X2 joint trajectories (root pose + 31 DoF @ 30 Hz),
+physically-screened X2 joint trajectories (root pose + 31-wide dof vector
+@ 30 Hz — head columns are neutral padding),
 ready for tracking-policy training or kinematic playback.
 
 Battle-tested as the data engine of the SONIC→X2 transfer
@@ -53,6 +55,8 @@ python retarget/build_locomotion_reference.py --src <retargeted> --out-root <dir
 ```
 
 Output schema: `{robot, fps, root_pos (T,3), root_rot (T,4 wxyz), dof_pos (T,31), source}`.
+The last 2 dof columns (head yaw/pitch) are always zero: the ik tables map no
+human head target, and the downstream tracking policy holds the head neutral.
 
 ## Calibration tables (`gmr_x2_overlay/`)
 
