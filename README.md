@@ -84,3 +84,20 @@ before touching anything.
 
 Apache-2.0 (this repository's own code). Upstream GMR and all data/assets
 keep their own licenses.
+
+## Known limitations
+
+- **Spine-extension poses lean the whole body forward.** The X2 waist pitch
+  range is ±18°; when the human extends the spine past it (overhead stretches,
+  "wait" idles) the pelvis-orientation anchor (w=100) pins the robot to the
+  human pelvis and the missing extension shows up as a global forward lean.
+  Batch QC rejects sustained cases (`waist_pitch` dwell); a redistribution fix
+  (rotating the pelvis target by the saturated excess) is planned but not
+  implemented.
+- **Streaming callers must scale for their FK skeleton.** The ik tables are
+  calibrated for a 1.8 m body. If you drive GMR from raw rotations FK'd on the
+  zero-beta SMPL-X skeleton (stature 1.7211 m), pass
+  `actual_human_height = 1.8 * (1.8 / 1.7211)` — GMR applies
+  `scale *= actual/assumption`, so claiming 1.8 under-scales every target by
+  ~4.6% (permanent knee bend, arm reach deficit). The batch pipelines reshape
+  bodies to 1.8 m and are unaffected.
