@@ -193,6 +193,30 @@ def test_x2_waist_posture_regularizer_is_active():
     assert posture.cost[retargeter.model.jnt_dofadr[joint_id]] == 20.0
 
 
+def test_native_x2_shoulder_branch_cost_is_axis_symmetric():
+    import mink
+
+    from retarget.native_gmr import NativeGMR
+
+    retargeter = NativeGMR(
+        actual_human_height=1.8,
+        src_human="smplx",
+        tgt_robot="agibot_x2",
+        verbose=False,
+    )
+    posture = next(
+        task for task in retargeter.tasks1 if isinstance(task, mink.PostureTask)
+    )
+    costs = []
+    for side in ("left", "right"):
+        for axis in ("pitch", "roll", "yaw"):
+            joint = retargeter.model.joint(
+                f"{side}_shoulder_{axis}_joint"
+            )
+            costs.append(posture.cost[retargeter.model.jnt_dofadr[joint.id]])
+    assert costs == [5.0] * 6
+
+
 def test_x2_arm_collision_projection_clears_hip_without_moving_body():
     import mujoco
     from mink.limits import CollisionAvoidanceLimit

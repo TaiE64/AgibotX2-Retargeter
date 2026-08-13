@@ -61,14 +61,12 @@ class NativeGMR(GeneralMotionRetargeting):
             dof_address = self.model.jnt_dofadr[joint_id]
             if name and ("wrist" in name or "head" in name):
                 posture_cost[dof_address] = 0.5
-            if name and "shoulder_pitch_joint" in name:
-                posture_cost[dof_address] = 2.0
-            if name and "shoulder_yaw_joint" in name:
-                posture_cost[dof_address] = 8.0
-            if name and "shoulder_roll_joint" in name:
-                # The X2 Euler shoulder has an equivalent solution near
-                # +/-pi roll.  Without a roll null-space cost, otherwise
-                # ordinary arm poses can jump onto that inverted branch.
+            if name and "shoulder_" in name:
+                # Keep the three Euler axes equally expensive.  Unequal costs
+                # make mirrored overhead arms choose different equivalent IK
+                # branches (large roll on the left, large pitch on the right),
+                # which also makes the solver borrow waist roll to meet the
+                # asymmetric shoulder targets.
                 posture_cost[dof_address] = 5.0
             if name == "waist_pitch_joint":
                 posture_cost[dof_address] = 10.0
