@@ -10,7 +10,21 @@ from general_motion_retargeting import GeneralMotionRetargeting
 class NativeGMR(GeneralMotionRetargeting):
     """Use GMR/Mink tasks directly, without analytic or projected IK passes."""
 
+    # Chest orientation weight.  The ik table gives torso_link 10 against the
+    # pelvis anchor's 100, so whenever the spine demand exceeds the X2 waist
+    # envelope the solver dumps the whole shortfall into chest orientation
+    # (wait/stretch clip: 43 deg median over the saturated frames) and the
+    # robot reads as hunched.  Raising it makes the pelvis give a little
+    # instead; X2_CHEST_ROT_COST overrides for experiments.
+    CHEST_ROT_COST = 20.0
+
     def setup_retarget_configuration(self):
+        import os
+        chest_cost = float(os.environ.get("X2_CHEST_ROT_COST", self.CHEST_ROT_COST))
+        for table in (self.ik_match_table1, self.ik_match_table2):
+            entry = table.get("torso_link")
+            if entry is not None and entry[2]:
+                table["torso_link"] = (entry[0], entry[1], chest_cost, entry[3], entry[4])
         self.configuration = mink.Configuration(self.model)
         self.tasks1 = []
         self.tasks2 = []
