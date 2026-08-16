@@ -388,7 +388,62 @@ def ground_snap(qpos):
     return qpos, off
 
 
-GROUND_SNAP = False  # set by main() via --ground_snap
+def ground_track(qpos, fps, contact_band=0.03, max_rate=0.6, smooth_s=0.15):
+    """Per-frame ground tracking: keep the stance foot ON the floor.
+
+    ``ground_snap`` shifts the whole clip by one constant (the 5th-percentile
+    sole height).  The solved sole height swings ~5 cm within a single walk,
+    so one constant cannot suit every frame: pinning the deepest frames
+    leaves the rest hanging (measured on ACCAD B3 walk: median sole +29 mm
+    after the snap, 47% of frames more than 3 cm off the floor, only 9.6%
+    actually touching).
+
+    Track it instead.  Per frame, take the lowest sole; a frame whose sole is
+    within ``contact_band`` of the running floor is a stance frame and its
+    sole is driven to zero.  Flight frames keep the offset from the last
+    stance frame, so a jump stays a jump.  The correction is rate-limited and
+    smoothed so it never injects vertical velocity the motion did not have.
+
+    Returns (qpos, mean_offset_m).
+    """
+    mujoco = _worker["mujoco"]
+    model, data = _worker["model"], _worker["data"]
+    foot_geoms = _worker["foot_geoms"]
+
+    soles = np.empty(len(qpos))
+    for t in range(len(qpos)):
+        data.qpos[:] = qpos[t]
+        mujoco.mj_forward(model, data)
+        soles[t] = sole_height(model, data, foot_geoms)
+
+    floor = float(np.percentile(soles, 5))
+    target = np.empty(len(qpos))
+    hold = soles[0] - floor
+    for t in range(len(qpos)):
+        rel = soles[t] - floor
+        if rel <= contact_band:          # stance: put this sole on the floor
+            hold = rel
+        target[t] = floor + hold         # flight: keep the last stance offset
+
+    # rate limit, then smooth: a correction must not add vertical velocity
+    limit = max_rate / fps
+    limited = np.empty_like(target)
+    limited[0] = target[0]
+    for t in range(1, len(target)):
+        step = np.clip(target[t] - limited[t - 1], -limit, limit)
+        limited[t] = limited[t - 1] + step
+    window = max(1, int(round(smooth_s * fps)) | 1)
+    kernel = np.ones(window) / window
+    padded = np.pad(limited, window // 2, mode="edge")
+    offset = np.convolve(padded, kernel, mode="valid")[: len(qpos)]
+
+    qpos = qpos.copy()
+    qpos[:, 2] -= offset
+    return qpos, float(offset.mean())
+
+
+GROUND_SNAP = False   # set by main() via --ground_snap
+GROUND_TRACK = True   # per-frame stance tracking; --constant_ground falls back
 
 
 def retarget_frames(frames, fps, human_height):
@@ -467,7 +522,9 @@ def process_clip(args):
                     "fail": "duration", "seconds": round(dur, 1)}
         qpos = retarget_frames(frames, fps, h)
         snap_off = 0.0
-        if GROUND_SNAP:
+        if GROUND_TRACK:
+            qpos, snap_off = ground_track(qpos, fps)
+        elif GROUND_SNAP:
             qpos, snap_off = ground_snap(qpos)
         del smplx_data, bm, out, frames
         import gc
@@ -478,8 +535,9 @@ def process_clip(args):
                     "source_frames": [start_frame, end_frame],
                     "seconds": round(dur, 1),
                     "ik_seconds": round(time.time() - t0, 1)})
-        if GROUND_SNAP:
-            rep["ground_snap_m"] = round(snap_off, 4)
+        if GROUND_TRACK or GROUND_SNAP:
+            rep["ground_offset_m"] = round(snap_off, 4)
+            rep["ground_mode"] = "track" if GROUND_TRACK else "snap"
         if rep["fail"] is None:
             out_path.parent.mkdir(parents=True, exist_ok=True)
             with open(out_path, "wb") as f:
@@ -498,7 +556,7 @@ def process_clip(args):
 
 
 def main():
-    global OUT_ROOT, GROUND_SNAP, MAX_SECONDS
+    global OUT_ROOT, GROUND_SNAP, GROUND_TRACK, MAX_SECONDS
     ap = argparse.ArgumentParser()
     ap.add_argument("--subsets", nargs="+", default=[])
     ap.add_argument("--workers", type=int, default=12)
@@ -512,6 +570,10 @@ def main():
     ap.add_argument("--no_ground_snap", dest="ground_snap", action="store_false",
                     help="disable clip-level ground snap")
     ap.set_defaults(ground_snap=True)
+    ap.add_argument("--constant_ground", dest="ground_track", action="store_false",
+                    help="use the old clip-constant ground snap instead of "
+                         "per-frame stance tracking")
+    ap.set_defaults(ground_track=True)
     ap.add_argument("--only_failed", default=None, metavar="REASON",
                     help="re-run only clips whose LATEST qc_report entry failed "
                          "with this reason (e.g. penetration); implies not skipping them")
@@ -548,6 +610,7 @@ def main():
         # override here so their output paths do not become relative to GMR.
         OUT_ROOT = pathlib.Path(args.out_root).resolve()
     GROUND_SNAP = args.ground_snap
+    GROUND_TRACK = args.ground_track
     MAX_SECONDS = args.max_seconds
 
     rerun_set = None

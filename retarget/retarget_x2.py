@@ -31,7 +31,10 @@ def main():
     parser.add_argument("--subject-shape", action="store_true",
                         help="preserve source SMPL-X betas (legacy)")
     parser.add_argument("--canonical-height", type=float, default=1.8)
-    parser.add_argument("--no-ground-snap", action="store_true")
+    parser.add_argument("--no-ground-snap", action="store_true",
+                        help="skip ground correction entirely")
+    parser.add_argument("--constant-ground", action="store_true",
+                        help="clip-constant snap instead of per-frame stance tracking")
     parser.add_argument("--allow-qc-fail", action="store_true",
                         help="write output even when production QC rejects it")
     args = parser.parse_args()
@@ -71,7 +74,10 @@ def main():
 
     qpos = batch.retarget_frames(frames, fps, human_height)
     if not args.no_ground_snap:
-        qpos, snap_offset = batch.ground_snap(qpos)
+        if args.constant_ground:
+            qpos, snap_offset = batch.ground_snap(qpos)
+        else:
+            qpos, snap_offset = batch.ground_track(qpos, fps)
         print(f"ground snap: {snap_offset:+.4f} m")
     report = batch.qc_checks(qpos, fps)
     print(f"QC: {report}")
